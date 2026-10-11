@@ -259,19 +259,31 @@ html.pointer :focus-visible{outline:none}
 /* 历法说明：屏幕居中的白色圆角弹窗 */
 .modal{position:fixed; inset:0; z-index:50; display:grid; place-items:center; padding:16px; background:rgba(43,43,43,.32)}
 .modal[hidden]{display:none}
-.modal-card{position:relative; width:min(600px,100%); max-height:min(86vh,860px); display:flex; flex-direction:column; background:var(--paper); border-radius:var(--r); overflow:hidden; box-shadow:0 12px 40px rgba(43,43,43,.18)}
-.modal-scroll{overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; padding:clamp(22px,3vw,34px); outline:none; scrollbar-width:thin; scrollbar-color:transparent transparent}
+.modal-card{position:relative; width:min(680px,100%); max-height:min(86vh,860px); display:flex; flex-direction:row-reverse; background:var(--paper); border-radius:var(--r); overflow:hidden; box-shadow:0 10px 30px rgba(43,43,43,.14); border:2px solid rgba(29,30,28,.72)}
+/* 弹窗：跟“内经时间”外框一样的双线版框，标题竖写在右边一栏 */
+.modal-card::before{content:""; position:absolute; inset:5px; border:1px solid rgba(29,30,28,.38); pointer-events:none; z-index:3}
+.m-side{display:flex; flex-direction:column; gap:12px; flex:none; writing-mode:vertical-rl; padding:58px 18px 24px 14px; margin:6px 6px 6px 0; border-left:1px solid rgba(29,30,28,.38)}
+.m-side .t{font-size:26px; font-weight:900; letter-spacing:.22em; line-height:1}
+.m-side .s{font-size:13px; color:var(--faint); letter-spacing:.3em; line-height:1; margin-top:6px}
+@media (max-width:560px){
+  .modal-card{flex-direction:column}
+  .m-side{writing-mode:horizontal-tb; gap:10px; padding:20px 50px 14px 22px; margin:6px 6px 0; border-left:0; border-bottom:1px solid rgba(29,30,28,.38)}
+  .m-side .t{font-size:22px; letter-spacing:.08em; white-space:nowrap}
+  .m-side .s{margin-top:0; letter-spacing:.1em}
+  .modal-scroll{margin:0 6px 6px !important}
+}
+.modal-scroll{flex:1; margin:6px 0 6px 6px; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; padding:clamp(22px,3vw,34px); outline:none; scrollbar-width:thin; scrollbar-color:transparent transparent}
 .modal-scroll:hover{scrollbar-color:rgba(43,43,43,.28) transparent}
 .modal-scroll::-webkit-scrollbar{width:8px}
 .modal-scroll::-webkit-scrollbar-track{background:transparent}
 .modal-scroll::-webkit-scrollbar-thumb{background:transparent; border-radius:8px; border:2px solid var(--paper)}
 .modal-scroll:hover::-webkit-scrollbar-thumb{background:rgba(43,43,43,.28)}
-.modal-x{position:absolute; z-index:2; top:12px; right:12px; background:var(--paper); width:34px; height:34px; border-radius:50%; display:grid; place-items:center; color:var(--muted)}
-@media (hover:hover){.modal-x:hover{background:var(--band); color:var(--ink)}}
+.modal-x{position:absolute; z-index:4; top:14px; right:16px; background:transparent; width:34px; height:34px; display:grid; place-items:center; color:var(--muted)}
+@media (hover:hover){.modal-x:hover{color:var(--ink)}}
 .modal-x svg{width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round}
-.m-title{margin:0 40px 6px 0; font-size:22px; font-weight:900; letter-spacing:.08em}
+.m-title{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); margin:0}
 .m-sec{padding:var(--gap) 0; border-top:1px solid var(--line)}
-.m-sec:first-of-type{border-top:0}
+.m-sec:first-of-type{border-top:0; padding-top:0}
 .m-sec h3{margin:0 0 8px; font-size:16px; font-weight:800; line-height:1.6; letter-spacing:.04em}
 .m-sec dl{margin:0; display:grid; grid-template-columns:6.4em minmax(0,1fr); gap:6px 12px; font-size:14px; line-height:1.85}
 .m-sec dt{color:var(--muted)}
@@ -518,6 +530,7 @@ details ul{margin:12px 0 0; padding-left:1.2em; line-height:1.9}
 <div class="modal" id="helpModal" role="dialog" aria-modal="true" aria-labelledby="helpTitle" hidden>
   <div class="modal-card">
     <button type="button" class="modal-x" id="helpClose" aria-label="关闭"><svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></svg></button>
+    <div class="m-side" aria-hidden="true"><span class="t">农历　干支历　公历</span><span class="s">是什么　怎么用</span></div>
     <div class="modal-scroll" tabindex="-1">
     <h2 class="m-title" id="helpTitle">农历、干支历、公历</h2>
     <section class="m-sec">
