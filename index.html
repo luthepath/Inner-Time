@@ -197,9 +197,11 @@ html.pointer :focus-visible{outline:none}
 .orrery:not(.moving) .lab.mkr{pointer-events:auto; cursor:grab; touch-action:none}
 .orrery:not(.moving) .lab.mkr::before{content:""; position:absolute; inset:calc(var(--u)*-12px); border-radius:50%}
 .orrery.dragging .lab.mkr{cursor:grabbing}
-.orrery.zoomed{z-index:5; touch-action:none}
+.orrery.zoomed{z-index:5}
 /* 手机双指放大时，只在表盘区域内放大，不盖住右侧文字 */
 .dial-col.clip{overflow:hidden; position:relative; z-index:1}
+/* 手机：上下仍在圆盘这一栏里截断（不压住下面的字），左右可以越过内侧细线，到外侧粗框才截断 */
+@media (max-width:900px){.dial-col.clip{overflow:visible; clip-path:inset(0 -40px)}}
 .mkr .dot{display:block; width:calc(var(--u)*13px); height:calc(var(--u)*13px); border-radius:50%; background:var(--gold); border:calc(var(--u)*2px) solid #fff; box-shadow:0 0 calc(var(--u)*10px) calc(var(--u)*3px) rgba(255,198,26,.65)}
 .mkr svg{display:block; width:calc(var(--u)*24px); height:calc(var(--u)*24px); overflow:visible; filter:drop-shadow(0 0 calc(var(--u)*5px) rgba(255,198,26,.95)) drop-shadow(0 0 calc(var(--u)*16px) rgba(255,198,26,.6))}
 .lab.moon svg{display:block; width:100%; height:100%; overflow:visible}
@@ -943,6 +945,7 @@ function glLoad(){
   document.head.appendChild(sc);
 }
 /* 立体时环的样子：土星环（有一点厚度，圆角的沿，面上有细纹，里外沿慢慢变透明） */
+var BAND_STEP=window.innerWidth<=900?1.3:.7;   /* 环面细纹的间距：手机上粗一些，转动时不闪 */
 var RING_H=2.4;                  /* 环的厚度（按 760 宽的圆盘算） */
 function ringGeom(T,r0,r1){
   var N=240, h=RING_H, rr=h/2, prof=[], i, t, inset=RING_FADE*.45;
@@ -1043,13 +1046,14 @@ function glTexture(){
     {
       var seed=7; function rnd(){seed=(seed*16807)%2147483647;return seed/2147483647;}
       RINGS.forEach(function(Rg){var r0=Rg.r[0], r1=Rg.r[1];
-        for(var r=r0+.5;r<r1;r+=.7){var v=rnd(); c.beginPath(); c.arc(0,0,r,0,Math.PI*2); c.lineWidth=.7;
+        for(var r=r0+.5;r<r1;r+=BAND_STEP){var v=rnd(); c.beginPath(); c.arc(0,0,r,0,Math.PI*2); c.lineWidth=BAND_STEP;
           c.strokeStyle=v<.55?'rgba(43,43,43,'+(v*.11).toFixed(3)+')':'rgba(255,253,246,'+((v-.55)*.32).toFixed(3)+')'; c.stroke();}});
       /* 环的里外沿：慢慢变透明 */
       c.globalCompositeOperation='destination-out';
-      RINGS.forEach(function(Rg){var r0=Rg.r[0], r1=Rg.r[1], F=Math.min(RING_FADE,(r1-r0)*.3);
-        for(var d=0;d<F;d+=.5){var u=d/F, al=1-u*u*(3-2*u); c.lineWidth=.55; c.strokeStyle='rgba(0,0,0,'+al.toFixed(3)+')';
-          c.beginPath(); c.arc(0,0,r0+d+.25,0,Math.PI*2); c.stroke(); c.beginPath(); c.arc(0,0,r1-d-.25,0,Math.PI*2); c.stroke();}});
+      /* 用径向渐变一次画完（不是一圈一圈的细线），边缘在手机上也是平滑的 */
+      RINGS.forEach(function(Rg){var r0=Rg.r[0], r1=Rg.r[1], F=Math.min(RING_FADE,(r1-r0)*.3), g=c.createRadialGradient(0,0,r0,0,0,r1), w=r1-r0;
+        for(var n=0;n<=8;n++){var u=n/8, al=1-u*u*(3-2*u); g.addColorStop(F/w*u,'rgba(0,0,0,'+al.toFixed(3)+')'); g.addColorStop(1-F/w*u,'rgba(0,0,0,'+al.toFixed(3)+')');}
+        c.fillStyle=g; c.beginPath(); c.arc(0,0,r1+.5,0,Math.PI*2); c.arc(0,0,r0-.5,0,Math.PI*2,true); c.fill();});
       c.globalCompositeOperation='source-over';
     }
     c.restore();
@@ -1183,13 +1187,14 @@ function settleStep(st,cur,tgt,dt,noFlip){
   var th=Math.acos(Math.min(1,d))/D2R, g=th>1e-4?nrm([tgt[0]-d*cur[0],tgt[1]-d*cur[1],tgt[2]-d*cur[2]]):null;
   /* 速度只会减小：被推的那一刻最快，降到滑行速度后匀速；没有外力时绝不自己加速 */
   var s=st.sp||0, sp=Math.max(Math.min(s,GLIDE),s*Math.exp(-dt*DECAY));
-  sp=Math.min(sp,RET_K*th+.3);
+  sp=Math.min(sp,RET_K*th+(th>1.5?.3:0));
   var dir=st.dir?nrm([st.dir[0]-dot(st.dir,cur)*cur[0],st.dir[1]-dot(st.dir,cur)*cur[1],st.dir[2]-dot(st.dir,cur)*cur[2]]):null;
   if(dir&&g){
     var rate=STEER_RATE*D2R*dt;
     var phi=Math.atan2(dot(cross(dir,g),cur),dot(dir,g)), tn=Math.max(-rate,Math.min(rate,phi));
     var cd=cross(cur,dir); dir=nrm([dir[0]*Math.cos(tn)+cd[0]*Math.sin(tn),dir[1]*Math.cos(tn)+cd[1]*Math.sin(tn),dir[2]*Math.cos(tn)+cd[2]*Math.sin(tn)]);
     if(dot(dir,g)>.8&&sp*dt>th)sp=th/dt;
+    if(th<1.5)dir=g;   /* 快到了：直接对准，慢慢停稳，不在原地打转 */
   }
   if(!dir)sp=0;
   st.wp=(st.wp||0)*Math.exp(-dt*DECAY); if(Math.abs(st.wp)<.3)st.wp=0;
@@ -1756,18 +1761,33 @@ function setMarkerTime(k,a){
 }
 /* 缩放：手机双指捏合（1～2.5 倍，可拖动）；电脑按住 Ctrl 滚轮或触控板捏合（0.9～1.25 倍） */
 var ZOOM={z:1,x:0,y:0}, PTRS={}, pinch=null, lastTap=0;
+/* 手机上最多放大到：左右两边刚好切掉四季、干支月、节气三圈（看到月相这一圈为止） */
+function zoomMax(){
+  var hero=document.querySelector('.hero'), W=hero?hero.clientWidth:orrery.offsetWidth;
+  return Math.max(1,Math.min(2.5,(W/2)/(214*unit)));
+}
 function applyZoom(){
   var W=orrery.offsetWidth, lim=Math.max(0,(ZOOM.z-1)*W/2);
   ZOOM.x=Math.max(-lim,Math.min(lim,ZOOM.x)); ZOOM.y=Math.max(-lim,Math.min(lim,ZOOM.y));
   var on=Math.abs(ZOOM.z-1)>.001;
   orrery.style.transform=on?'translate('+ZOOM.x.toFixed(1)+'px,'+ZOOM.y.toFixed(1)+'px) scale('+ZOOM.z.toFixed(3)+')':'';
   orrery.classList.toggle('zoomed',ZOOM.z>1.001);
-  orrery.parentNode.classList.toggle('clip',ZOOM.z>1.26);
+  orrery.parentNode.classList.toggle('clip',window.innerWidth<=900?ZOOM.z>1.001:ZOOM.z>1.26);
 }
 orrery.addEventListener('wheel',function(e){
   if(!(e.ctrlKey||e.metaKey))return; e.preventDefault();
   ZOOM.z=Math.max(.9,Math.min(1.25,ZOOM.z*Math.exp(-e.deltaY*.01))); ZOOM.x=ZOOM.y=0; applyZoom();
 },{passive:false});
+/* 手指离哪一条金线最近（只认金线外侧那一段，靠近小人的地方几条线挤在一起不算） */
+function lineAt(e){
+  if(e.pointerType==='mouse')return null;
+  var r=orrery.getBoundingClientRect(), sc=r.width/orrery.offsetWidth, cx=r.width/2, cy=r.height/2, px=e.clientX-r.left, py=e.clientY-r.top, best=null, bd=16*Math.max(1,sc);
+  Object.keys(MARKERS).forEach(function(k){var L=MARKERS[k]; if(L.sx==null||getComputedStyle(L.el).display==='none')return;
+    var mx=L.sx*sc, my=L.sy*sc, vx=mx-cx, vy=my-cy, l2=vx*vx+vy*vy; if(l2<1)return;
+    var t=((px-cx)*vx+(py-cy)*vy)/l2; if(t<.35||t>1.05)return;
+    var d=Math.hypot(px-(cx+vx*t),py-(cy+vy*t)); if(d<bd){bd=d;best=k;}});
+  return best;
+}
 orrery.addEventListener('pointerdown',function(e){
   PTRS[e.pointerId]={x:e.clientX,y:e.clientY};
   var ids=Object.keys(PTRS);
@@ -1779,8 +1799,10 @@ orrery.addEventListener('pointerdown',function(e){
   var mk=mode!=='move'&&e.target.closest&&e.target.closest('.lab.mkr');
   if(mk){var mkK=null;Object.keys(MARKERS).forEach(function(k){if(MARKERS[k].el===mk)mkK=k;});
     if(mkK){drag={marker:mkK,moved:true,x0:e.clientX,y0:e.clientY,lx:e.clientX,ly:e.clientY,lt:performance.now(),type:e.pointerType};orrery.classList.add('dragging');try{orrery.setPointerCapture(e.pointerId);}catch(_){} e.preventDefault(); return;}}
+  /* 静止时，手指按在金线上也能拨动它连着的小太阳 */
+  if(mode!=='move'&&!mk){var lk=lineAt(e); if(lk){drag={marker:lk,moved:true,x0:e.clientX,y0:e.clientY,lx:e.clientX,ly:e.clientY,lt:performance.now(),type:e.pointerType};orrery.classList.add('dragging');try{orrery.setPointerCapture(e.pointerId);}catch(_){} e.preventDefault(); return;}}
   var sg=segAt(e), hit=sg?null:ringAt(e);
-  if(!sg&&!hit&&mode!=='move'&&!(ZOOM.z>1.001))return;
+  if(!sg&&!hit&&mode!=='move'&&!(ZOOM.z>1.001&&e.pointerType==='mouse'))return;
   drag={k:sg?sg.getAttribute('data-k'):hit?hit.k:null,whole:!sg&&!hit,seg:sg,hit:hit,x0:e.clientX,y0:e.clientY,lx:e.clientX,ly:e.clientY,la:angleAt(e),lt:performance.now(),moved:false,type:e.pointerType};
   try{orrery.setPointerCapture(e.pointerId);}catch(_){}
   kick();
@@ -1789,7 +1811,7 @@ orrery.addEventListener('pointermove',function(e){
   if(drag&&e.pointerType==='mouse'&&!(e.buttons&1)){endDrag(e);return;}   /* 鼠标没按着就不算拖动 */
   if(PTRS[e.pointerId])PTRS[e.pointerId]={x:e.clientX,y:e.clientY};
   if(pinch){var ids=Object.keys(PTRS); if(ids.length<2)return; var A=PTRS[ids[0]],B=PTRS[ids[1]];
-    ZOOM.z=Math.max(1,Math.min(2.5,pinch.z0*Math.hypot(A.x-B.x,A.y-B.y)/pinch.d0));
+    ZOOM.z=Math.max(1,Math.min(zoomMax(),pinch.z0*Math.hypot(A.x-B.x,A.y-B.y)/pinch.d0));
     ZOOM.x=pinch.x0+((A.x+B.x)/2-pinch.mx); ZOOM.y=pinch.y0+((A.y+B.y)/2-pinch.my); applyZoom(); return;}
   if(drag&&drag.marker){setMarkerTime(drag.marker,angleAt(e));return;}
   if(!drag){var sg=segAt(e);if(e.pointerType==='mouse'){if(sg)showTip(sg,e.clientX,e.clientY);else hideTip();}return;}
@@ -1806,7 +1828,7 @@ orrery.addEventListener('pointermove',function(e){
       if(drag.whole){QS.w=[0,0,0];QS.sp=0;QS.dir=null;QS.wp=0;}
       else{var g=G[drag.k];g.S.w=[0,0,0];g.S.sp=0;g.S.dir=null;g.S.wp=0;}
     }
-  }else if(ZOOM.z>1.001){ /* 静止且放大时：拖动画面 */
+  }else if(ZOOM.z>1.001&&e.pointerType==='mouse'){ /* 静止且放大时：鼠标拖动画面（手机上单指不移动圆盘，用双指） */
     ZOOM.x+=dx; ZOOM.y+=dy; applyZoom();
   }
   drag.lx=e.clientX; drag.ly=e.clientY; drag.lt=now;
