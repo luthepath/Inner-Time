@@ -217,6 +217,8 @@ html.pointer :focus-visible{outline:none}
 .person{position:absolute; left:50%; top:50%; width:13%; height:13%; transform:translate(-50%,-50%); pointer-events:none; z-index:1000}   /* 远处的字在它后面，近处的字在它前面 */
 .person svg{position:absolute; inset:0; width:100%; height:100%; overflow:visible; filter:drop-shadow(0 0 6px rgba(255,200,20,.85)) drop-shadow(0 0 1px rgba(255,180,0,.9)); transition:opacity .6s}
 .person svg.stand,.person svg.walk{transform-origin:50% 50%}
+/* 小人画在 canvas 上：盖住人像坐标 x 14–86、y -4–104 这一块（和以前 SVG 的 viewBox 26 2 48 96 对齐） */
+.person canvas.fig{position:absolute; left:12.5%; top:-6.25%; width:75%; height:112.5%; transform-origin:50% 50%; filter:drop-shadow(0 0 6px rgba(255,200,20,.85)) drop-shadow(0 0 1px rgba(255,180,0,.9))}
 /* 转身：正面先压扁，侧面再展开，像纸人转过来（.26s 是每一半的时长） */
 .person .stand{opacity:1; transform:scaleX(1); transition:transform .26s ease-out .26s, opacity 0s .26s}
 .person .walk{opacity:0; transform:scaleX(0); transition:transform .26s ease-in, opacity 0s .26s}
@@ -623,7 +625,7 @@ function smoothF(g,sm){
   }
   return 'url(#'+id+')';
 }
-function smoothG(par,sm){var f=smoothF(par,sm), a={}; if(f)a.filter=f; return E('g',a,par);}
+function smoothG(par,sm){return E('g',{'data-sm':sm||0},par);}   /* 平滑在 figRaster 里做（canvas），不用 SVG 滤镜 */
 window.NFIG={draw:function(g,pose,opt){
   opt=opt||{}; var col=opt.color||'#FFFDF6', W=opt.w||8, join=opt.head!=='apart', arms=opt.arms!==false, caps=[];
   var walk=pose.mode==='walk', ph=pose.ph||0, s=Math.sin(ph);
@@ -1017,10 +1019,11 @@ function buildStatic(){
   var person=document.createElement('div'); person.className='person'; person.setAttribute('aria-hidden','true');
   person.innerHTML='<svg class="pm" viewBox="26 2 48 96" aria-hidden="true"><mask id="pmask" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="14" y="-4" width="72" height="108"><rect x="14" y="-4" width="72" height="108" fill="#fff"/>'
    +RINGS.map(function(R){return '<path class="pmc" fill="#000" d=""/>';}).join('')+'</mask></svg>'
-   +'<svg class="stand" viewBox="26 2 48 96"><g mask="url(#pmask)"><g class="fs" transform="translate(50 2) scale(.96) translate(-50 0)"></g></g></svg>'
-   +'<svg class="walk" viewBox="26 2 48 96"><g mask="url(#pmask)"><g class="fw" transform="translate(50 2) scale(.96) translate(-50 0)"></g></g></svg>';
-  NFIG.draw(person.querySelector('.fs'),{mode:'stand'},FIG_OPT); NFIG.draw(person.querySelector('.fw'),{mode:'walk',ph:0},FIG_OPT);
+   +'<canvas class="fig stand"></canvas><canvas class="fig walk"></canvas>';
   labelsEl.appendChild(person); PMASK=[].slice.call(person.querySelectorAll('.pmc'));
+  FIGC.cv={st:person.querySelector('canvas.stand'),wk:person.querySelector('canvas.walk')};
+  if(window.ResizeObserver)new ResizeObserver(function(){figPaint();}).observe(person);
+  figPaint();
 }
 /* 月相：一天一格，月亮做成浮在格子上的小球 */
 var moonKey=null, MOONS=[];
@@ -1195,7 +1198,8 @@ function domBaseline(el,cs){
   var cl=el.cloneNode(true), mk=document.createElement('span');
   cl.removeAttribute('style'); cl.style.transform='none'; cl.style.visibility='hidden'; cl.style.left='0'; cl.style.top='0';
   mk.style.cssText='display:inline-block;width:0;height:0;vertical-align:baseline';
-  cl.appendChild(mk); el.parentNode.appendChild(cl);
+  var tw=document.createElement('span'); tw.textContent=el.textContent; tw.appendChild(mk);   /* 圆圈里的数字是 grid 居中的，字和记号要放在同一行里量 */
+  cl.textContent=''; cl.appendChild(tw); el.parentNode.appendChild(cl);
   var r=cl.getBoundingClientRect(), m=mk.getBoundingClientRect(), v=(r.height>0)?m.top-r.top:null;
   cl.parentNode.removeChild(cl);
   if(v!=null&&(!document.fonts||document.fonts.status==='loaded'))BL_CACHE[key]=v; return v;
@@ -1434,26 +1438,87 @@ function tick(t){
     if(!wantGL){void orrery.offsetWidth; setTimeout(function(){orrery.classList.remove('unGL');},50);}}
   Object.keys(MARKERS).forEach(function(k){var L=MARKERS[k],d=L.target-L.ang;if(Math.abs(d)>.05){L.ang+=d*(1-Math.exp(-dt*3.2));active=true;}else L.ang=L.target;L.x=L.r*sind(L.ang);L.y=-L.r*cosd(L.ang);});
   placeLabels();
-  if(orrery.classList.contains('moving')){var fw=orrery.querySelector('.person .fw'); if(fw){fw.innerHTML=''; NFIG.draw(fw,{mode:'walk',ph:now*Math.PI*2*FIG_WALK},FIG_OPT);}}
+  if(orrery.classList.contains('moving')){FIGC.ph=now*Math.PI*2*FIG_WALK; FIGC.wd=true; figPaint();}
   if(GL.active)glFrame();
   if(active)requestAnimationFrame(tick); else rafOn=false;
 }
 /* 小人在圆环里面：圆环靠近我们的那一半，从小人身上“挡掉”（只改小人，不动圆环，省性能） */
 var PK=98.8/96;                                   /* 人像坐标 1 = 圆环坐标 1.029 */
+/* 小人画在 canvas 上：先把笔画画成白色，再模糊一下、把边缘收紧（和以前 SVG 滤镜一样的效果），
+   最后挖掉前面圆环挡住的部分。不用 SVG 滤镜和遮罩，手机 Safari 上也能正常显示 */
+var FIGC={ph:0,wd:true,md:true,h:0,cache:null};
+var FIG_RES=1.5;                               /* 小人画布的清晰度（相对屏幕像素） */
+function figCollect(pose){
+  var root=document.createElementNS('http://www.w3.org/2000/svg','g'); NFIG.draw(root,pose,FIG_OPT);
+  var layers=[];
+  (function walk(node,op,dy,cur){
+    for(var i=0;i<node.children.length;i++){var ch=node.children[i], t=ch.tagName.toLowerCase();
+      if(t==='g'){var o=op*(ch.hasAttribute('opacity')?+ch.getAttribute('opacity'):1), y=dy, tr=ch.getAttribute('transform'), m=tr&&/translate\(\s*([-\d.e]+)[\s,]+([-\d.e]+)\s*\)/.exec(tr);
+        if(m)y+=+m[2];
+        if(ch.hasAttribute('data-sm')){var L={sm:+ch.getAttribute('data-sm'),op:o,sh:[]}; layers.push(L); walk(ch,1,y,L);} else walk(ch,o,y,cur);}
+      else if(cur)cur.sh.push({t:t,dy:dy,el:ch});}
+  })(root,1,0,null);
+  return layers;
+}
+function figBoxes(sig){var n=3,wI=Math.sqrt(12*sig*sig/n+1),wl=Math.floor(wI);if(wl%2===0)wl--;var wu=wl+2,m=Math.round((12*sig*sig-n*wl*wl-4*n*wl-3*n)/(-4*wl-4)),o=[];for(var i=0;i<n;i++)o.push(i<m?wl:wu);return o;}
+function figBlur(a,b,w,h,sig){
+  if(!(sig>0))return;
+  figBoxes(sig).forEach(function(bx){var r=Math.max(0,(bx-1)/2), k=1/(r+r+1), x, y, o, acc;
+    for(y=0;y<h;y++){o=y*w;acc=0;for(x=0;x<=r&&x<w;x++)acc+=a[o+x];for(x=0;x<w;x++){b[o+x]=acc*k;if(x+r+1<w)acc+=a[o+x+r+1];if(x-r>=0)acc-=a[o+x-r];}}
+    for(x=0;x<w;x++){acc=0;for(y=0;y<=r&&y<h;y++)acc+=b[y*w+x];for(y=0;y<h;y++){a[y*w+x]=acc*k;if(y+r+1<h)acc+=b[(y+r+1)*w+x];if(y-r>=0)acc-=b[(y-r)*w+x];}}});
+}
+function figRaster(layers,W,H,k){
+  var out=document.createElement('canvas'); out.width=W; out.height=H; var oc=out.getContext('2d');
+  var tmp=FIGC.tmp||(FIGC.tmp=document.createElement('canvas')); if(tmp.width!==W||tmp.height!==H){tmp.width=W;tmp.height=H;}
+  var tc=tmp.getContext('2d'), n=W*H, fk=k*.96;
+  if(!FIGC.a||FIGC.a.length!==n){FIGC.a=new Float32Array(n);FIGC.b=new Float32Array(n);}
+  var a=FIGC.a, b=FIGC.b;
+  layers.forEach(function(L){
+    tc.setTransform(1,0,0,1,0,0); tc.clearRect(0,0,W,H);
+    tc.setTransform(fk,0,0,fk,-12*k,6*k);          /* 人像坐标 → 画布像素：x' = .96x + 2，y' = .96y + 2，再按 14、-4 为原点 */
+    tc.fillStyle='#fff';
+    L.sh.forEach(function(s){var e=s.el; tc.save(); tc.translate(0,s.dy); tc.beginPath();
+      if(s.t==='path')tc.fill(new Path2D(e.getAttribute('d')));
+      else if(s.t==='circle'){tc.arc(+e.getAttribute('cx'),+e.getAttribute('cy'),+e.getAttribute('r'),0,Math.PI*2);tc.fill();}
+      else if(s.t==='ellipse'){tc.ellipse(+e.getAttribute('cx'),+e.getAttribute('cy'),+e.getAttribute('rx'),+e.getAttribute('ry'),0,0,Math.PI*2);tc.fill();}
+      tc.restore();});
+    tc.setTransform(1,0,0,1,0,0);
+    var id=tc.getImageData(0,0,W,H), d=id.data, i;
+    for(i=0;i<n;i++)a[i]=d[i*4+3]/255;
+    figBlur(a,b,W,H,L.sm*fk);
+    for(i=0;i<n;i++){var v=18*a[i]-8.5; v=v<0?0:v>1?1:v; d[i*4]=255;d[i*4+1]=253;d[i*4+2]=246;d[i*4+3]=Math.round(v*255);}
+    tc.putImageData(id,0,0);
+    oc.globalAlpha=L.op; oc.drawImage(tmp,0,0);});
+  return out;
+}
+function figPaint(){
+  var cs=FIGC.cv; if(!cs)return;
+  var bh=cs.st.parentNode.offsetHeight; if(!bh)return;
+  var dpr=Math.min(3,window.devicePixelRatio||1)*FIG_RES, H=Math.round(bh*1.125*dpr), W=Math.round(bh*.75*dpr), k=H/108;
+  if(H!==FIGC.h){FIGC.h=H; cs.st.width=cs.wk.width=W; cs.st.height=cs.wk.height=H; FIGC.cache=null; FIGC.wd=FIGC.md=true;}
+  var fresh=false; if(!FIGC.cache){FIGC.cache=figRaster(figCollect({mode:'stand'}),W,H,k); fresh=true;}
+  function blit(c,img){var x=c.getContext('2d'); x.setTransform(1,0,0,1,0,0); x.globalCompositeOperation='source-over'; x.globalAlpha=1; x.clearRect(0,0,W,H); x.drawImage(img,0,0);
+    x.globalCompositeOperation='destination-out'; x.setTransform(k,0,0,k,-14*k,4*k);
+    PMASK.forEach(function(p){if(!p._d)return; if(p._pd!==p._d){p._p=new Path2D(p._d);p._pd=p._d;} x.globalAlpha=p._fo==null?1:p._fo; x.fill(p._p);});
+    x.setTransform(1,0,0,1,0,0); x.globalCompositeOperation='source-over'; x.globalAlpha=1;}
+  if(fresh||FIGC.md)blit(cs.st,FIGC.cache);
+  if(orrery.classList.contains('moving')&&(FIGC.wd||FIGC.md)){blit(cs.wk,figRaster(figCollect({mode:'walk',ph:FIGC.ph}),W,H,k)); FIGC.wd=false;}
+  FIGC.md=false;
+}
 function personMask(){
   if(!PMASK.length)return;
   var hs=orrery.classList.contains('has-sel'), nt=orrery.classList.contains('notime');
   RINGS.forEach(function(R,i){
     var M=G[R.k].M, A=Math.hypot(M[6],M[7]), el=PMASK[i];
-    if(A<.03){if(el._d!==''){el.setAttribute('d','');el._d='';}return;}
+    if(A<.03){if(el._d!==''){el.setAttribute('d','');el._d='';FIGC.md=true;}return;}
     var t0=Math.atan2(M[7],M[6]), pts=[], N=28;
     [R.r[1],R.r[0]].forEach(function(r,side){
       for(var j=0;j<=N;j++){var t=t0+(side?1-j/N*2:-1+j/N*2)*Math.PI/2, x=r*Math.cos(t), y=r*Math.sin(t);
         var vz=(M[6]*x+M[7]*y)*unit, sc=P/(P-vz);
         pts.push(f(50+(M[0]*x+M[1]*y)*sc/PK)+' '+f(50+(M[3]*x+M[4]*y)*sc/PK));}
     });
-    var d='M'+pts.join('L')+'Z'; el.setAttribute('d',d); el._d=d;
-    el.setAttribute('fill-opacity',hs?.22:(nt&&(R.k==='sc'||R.k==='q'||R.k==='yy'))?.35:1);
+    var d='M'+pts.join('L')+'Z', fo=hs?.22:(nt&&(R.k==='sc'||R.k==='q'||R.k==='yy'))?.35:1;
+    if(d!==el._d||fo!==el._fo){el.setAttribute('d',d); el._d=d; el.setAttribute('fill-opacity',fo); el._fo=fo; FIGC.md=true;}
   });
 }
 /* 小人的身体（人像坐标）：头是圆，身体、手臂、腿是胶囊形 */
@@ -1522,7 +1587,7 @@ function placeLabels(){
     dpath+='M'+(half+(E.x-50)*k0).toFixed(1)+' '+(half+(E.y-50)*k0).toFixed(1)+'L'+P0.sx.toFixed(1)+' '+P0.sy.toFixed(1);
   });
   linkGlow.setAttribute('d',dpath); linkCore.setAttribute('d',dpath);
-  personMask();
+  personMask(); figPaint();
   /* 月亮小球被黑色圈面切开：圈面后面那一半变暗 */
   var Mm=G.m.M, nx=Mm[2], ny=Mm[5], nz=Mm[8];
   if(nz<0){nx=-nx;ny=-ny;nz=-nz;}
