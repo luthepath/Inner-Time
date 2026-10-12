@@ -3,13 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>内经时间 | Inner Canon Calendar</title>
+<title>内经时间 Inner Time</title>
+<meta name="apple-mobile-web-app-title" content="内经时间">
 <meta name="description" content="按《黄帝内经》（素问、灵枢）看此刻：时辰、四时、阴阳、月相、二十四节气、干支月与四季，配原文、白话和养生提示。">
 <meta name="theme-color" content="#EFEDE6">
 <meta property="og:type" content="website">
-<meta property="og:title" content="内经时间 | Inner Canon Calendar">
+<meta property="og:title" content="内经时间 Inner Time">
 <meta property="og:description" content="按《黄帝内经》（素问、灵枢）看此刻：时辰、月相、节气、四季，配原文与养生提示。">
-<meta property="og:image" content="https://luthepath.github.io/TCM-Inner-Canon-Calendar/og.png">
+<meta property="og:image" content="https://luthepath.github.io/Inner-Time/og.png">
+<meta property="og:url" content="https://luthepath.github.io/Inner-Time/">
 <meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='30' fill='%23EFEDE6'/%3E%3Ccircle cx='32' cy='32' r='24' fill='none' stroke='%23A9A79F' stroke-width='5'/%3E%3Ccircle cx='32' cy='32' r='13' fill='none' stroke='%232B2B2B' stroke-width='6'/%3E%3Ccircle cx='32' cy='8' r='6' fill='%23FFC61A' stroke='%23fff' stroke-width='2'/%3E%3C/svg%3E">
 <link rel="apple-touch-icon" href="icon-180.png">
@@ -152,10 +154,11 @@ html.pointer :focus-visible{outline:none}
 .plane canvas.gl{position:absolute; left:0; top:0; width:100%; height:100%; display:block; opacity:0; pointer-events:none; transition:opacity var(--gl-fade) ease}
 .orrery.gl canvas.gl{opacity:1}
 /* 平面（SVG）和立体（WebGL）之间：慢慢交叉淡入淡出，不是一下子换掉 */
-.orrery .layer:not(.L-base):not(.front){transition:opacity var(--gl-fade) ease, visibility 0s}
-.orrery.gl .layer:not(.L-base){opacity:0; visibility:hidden; transition:opacity var(--gl-fade) ease, visibility 0s linear var(--gl-fade)}
+/* 平面的环一直垫在土星环下面：立起来时等土星环完全出现才收起，躺平时先整个出现，再让土星环淡掉 */
+.orrery .layer:not(.L-base):not(.front){transition:none}
+.orrery.gl .layer:not(.L-base){opacity:0; visibility:hidden; transition:opacity 0s linear var(--gl-fade), visibility 0s linear var(--gl-fade)}
 /* 立体时字和小太阳由 WebGL 画（会被前面的环真的挡住），这里的 HTML 只留着给读屏和点按 */
-.orrery .labels .lab,.orrery .links{transition:opacity .25s, filter var(--gl-fade) ease, visibility 0s}
+.orrery .labels .lab,.orrery .links{transition:opacity .25s, filter .35s ease, visibility 0s}
 .orrery.gl .labels .lab,.orrery.gl .links{filter:opacity(0); visibility:hidden; transition:opacity .25s, filter var(--gl-fade) ease, visibility 0s linear var(--gl-fade)}
 .seg{pointer-events:visibleStroke; cursor:pointer; transition:opacity .25s}
 .orrery.moving .seg{cursor:grab}
@@ -211,20 +214,12 @@ html.pointer :focus-visible{outline:none}
 /* 中心的人 */
 .person{position:absolute; left:50%; top:50%; width:13%; height:13%; transform:translate(-50%,-50%); pointer-events:none; z-index:1000}   /* 远处的字在它后面，近处的字在它前面 */
 .person svg{position:absolute; inset:0; width:100%; height:100%; overflow:visible; filter:drop-shadow(0 0 6px rgba(255,200,20,.85)) drop-shadow(0 0 1px rgba(255,180,0,.9)); transition:opacity .6s}
-.person .stand{opacity:1} .person .walk{opacity:0}
-.orrery.moving .person .stand{opacity:0} .orrery.moving .person .walk{opacity:1}
-.walk .lm{stroke:#FFFDF6; stroke-linecap:round; fill:none}
-.walk .back{stroke:#F3EBD5}
-.walk .leg{transform-origin:50px 56px} .walk .shin{transform-origin:50px 74px} .walk .arm{transform-origin:50px 30px}
-.orrery.moving .walk .bob{animation:w-bob 1.1s linear infinite}
-.orrery.moving .walk .leg{animation:w-thigh 1.1s ease-in-out infinite}
-.orrery.moving .walk .shin{animation:w-shin 1.1s ease-in-out infinite}
-.orrery.moving .walk .arm{animation:w-arm 1.1s ease-in-out infinite}
-.orrery.moving .walk .b2{animation-delay:-.55s}
-@keyframes w-thigh{0%,100%{transform:rotate(-24deg)}50%{transform:rotate(24deg)}}
-@keyframes w-shin{0%,48%{transform:rotate(0)}72%{transform:rotate(58deg)}96%,100%{transform:rotate(0)}}
-@keyframes w-arm{0%,100%{transform:rotate(22deg)}50%{transform:rotate(-22deg)}}
-@keyframes w-bob{0%,50%,100%{transform:translateY(0)}25%,75%{transform:translateY(-1.6px)}}
+.person svg.stand,.person svg.walk{transform-origin:50% 50%}
+/* 转身：正面先压扁，侧面再展开，像纸人转过来（.26s 是每一半的时长） */
+.person .stand{opacity:1; transform:scaleX(1); transition:transform .26s ease-out .26s, opacity 0s .26s}
+.person .walk{opacity:0; transform:scaleX(0); transition:transform .26s ease-in, opacity 0s .26s}
+.orrery.moving .person .stand{opacity:0; transform:scaleX(0); transition:transform .26s ease-in, opacity 0s .26s}
+.orrery.moving .person .walk{opacity:1; transform:scaleX(1); transition:transform .26s ease-out .26s, opacity 0s .26s}
 
 .dial-tools{position:relative; z-index:8; display:flex; flex-direction:column; align-items:center; gap:6px; margin-top:clamp(22px,calc(3*var(--w1)),40px)}
 .taiji{width:46px; height:46px; display:grid; place-items:center; border-radius:50%}
@@ -576,6 +571,90 @@ details ul{margin:12px 0 0; padding-left:1.2em; line-height:1.9}
 </div>
 
 <script>
+/* 内经时间：小人（笔画式人形）
+   NFIG.draw(g, pose, opt)  画一个小人，返回它的骨架（给金线找落点用）
+     pose {mode:'stand'|'walk', ph:迈步相位}
+     opt  {head:'join'|'apart'  头和身体连着/分开,
+           arms:true|false      有手/只是一个“人”字,
+           w:笔画粗细（默认 8）, color}
+   坐标：高 100，脚底 y=100，中线 x=50；向右走。 */
+(function(){
+var NS='http://www.w3.org/2000/svg';
+function E(t,a,p){var e=document.createElementNS(NS,t);for(var k in a)e.setAttribute(k,a[k]);if(p)p.appendChild(e);return e;}
+function bez(s,t){var u=1-t;return [u*u*u*s[0][0]+3*u*u*t*s[1][0]+3*u*t*t*s[2][0]+t*t*t*s[3][0],u*u*u*s[0][1]+3*u*u*t*s[1][1]+3*u*t*t*s[2][1]+t*t*t*s[3][1]];}
+function pt(o,a,l){var r=a*Math.PI/180;return [o[0]+Math.sin(r)*l,o[1]+Math.cos(r)*l];}       /* a 从正下方量，向右为正 */
+/* 记号笔一样的笔画：粗细基本一致，起笔略圆，收笔稍收 */
+function prof(t){return t<.06?.82+3*t:(t>.8?1-.3*(t-.8)/.2:1);}
+function stroke(g,segs,w,col,caps){
+  var C=[],n=16;
+  segs.forEach(function(s,si){for(var i=(si?1:0);i<=n;i++)C.push(bez(s,i/n));});
+  var L=[],R=[],N=C.length;
+  for(var i=0;i<N;i++){var a=C[Math.max(0,i-1)],b=C[Math.min(N-1,i+1)],dx=b[0]-a[0],dy=b[1]-a[1],l=Math.hypot(dx,dy)||1,ww=w*prof(i/(N-1))/2;
+    L.push([C[i][0]-dy/l*ww,C[i][1]+dx/l*ww]);R.push([C[i][0]+dy/l*ww,C[i][1]-dx/l*ww]);}
+  var f=function(p){return p[0].toFixed(2)+' '+p[1].toFixed(2);};
+  E('path',{d:'M'+L.map(f).join('L')+'L'+R.reverse().map(f).join('L')+'Z',fill:col},g);
+  E('circle',{cx:C[0][0],cy:C[0][1],r:w*prof(0)/2,fill:col},g);
+  E('circle',{cx:C[N-1][0],cy:C[N-1][1],r:w*prof(1)/2,fill:col},g);
+  if(caps)for(var j=0;j+3<N;j+=3)caps.push({a:C[j],b:C[Math.min(N-1,j+3)],r:w/2});
+}
+/* 两节的肢体，过关节弯一下；tip：末端的小钩（角度, 长度） */
+function limb(g,o,a1,l1,a2,l2,w,col,tip,caps){
+  var j=pt(o,a1,l1), e=pt(j,a1+a2,l2);
+  var segs=[[o,[o[0]+(j[0]-o[0])*.75,o[1]+(j[1]-o[1])*.75],[j[0]+(e[0]-j[0])*.25,j[1]+(e[1]-j[1])*.25],e]];
+  if(tip){var q=pt(e,a1+a2+tip[0],tip[1]);segs.push([e,pt(e,a1+a2+tip[0]*.5,tip[1]*.4),q,q]);}
+  stroke(g,segs,w,col,caps);
+}
+function head(g,c,join,col,caps){
+  if(join)E('ellipse',{cx:c[0],cy:c[1],rx:6.4,ry:7.6,fill:col},g); else E('circle',{cx:c[0],cy:c[1],r:7.2,fill:col},g);
+  if(caps)caps.push({a:c,b:c,r:7.4});
+}
+window.NFIG={draw:function(g,pose,opt){
+  opt=opt||{}; var col=opt.color||'#FFFDF6', W=opt.w||8, join=opt.head!=='apart', arms=opt.arms!==false, caps=[];
+  var walk=pose.mode==='walk', ph=pose.ph||0, s=Math.sin(ph);
+  var G=E('g',{transform:'translate(0 '+(walk?-1.2*Math.abs(Math.cos(ph)):0)+')'},g);
+  var kn=function(p){return -Math.max(0,24*Math.sin(p+Math.PI/2+.3));};
+  if(arms&&!walk){
+    /* 正面站立，有手 */
+    head(G,[50,9],join,col,caps);
+    var t0=join?13:20.5;
+    stroke(G,[[[50,t0],[50.8,28],[49.4,40],[50,join?54:51]]],W*1.08,col,caps);
+    if(join){
+      limb(G,[47.6,24],-42,14,32,16,W*.88,col,[-14,4],caps); limb(G,[52.4,24],42,14,-32,16,W*.88,col,[14,4],caps);
+      limb(G,[49.4,53],-13,23,6,24,W,col,[-72,7],caps);      limb(G,[50.6,53],13,23,-6,24,W,col,[72,7],caps);
+    }else{
+      limb(G,[41,27],-22,14,18,16,W*.86,col,[-16,4.5],caps); limb(G,[59,27],22,14,-18,16,W*.86,col,[16,4.5],caps);
+      limb(G,[46,56],-11,22,6,23,W*.96,col,[-74,7.5],caps);  limb(G,[54,56],11,22,-6,23,W*.96,col,[74,7.5],caps);
+    }
+    return caps;
+  }
+  if(arms){
+    /* 侧面迈步，有手：背挺直，步子和节奏跟“人”字一样，手只轻轻前后摆 */
+    head(G,[51.6,9],join,col,caps);
+    stroke(G,[[[51.3,join?13:20.5],[51.7,27],[50.7,40],[50,52]]],W*1.08,col,caps);
+    var sh=join?[51.3,24.5]:[51.5,27.5], hip=[50,52], LL=24.5;
+    var arm=function(sw,op){var a=E('g',{opacity:op},G);limb(a,sh,sw,14,5+Math.max(0,sw)*.4,14.5,W*.84,col,[18,4.5],op===1?caps:null);};
+    var leg=function(sw,k,op){var a=E('g',{opacity:op},G);limb(a,hip,sw,LL,k,LL,W,col,[80-k*.3,7.5],op===1?caps:null);};
+    arm(14*s,.55); leg(-24*s,kn(ph+Math.PI),.75); leg(24*s,kn(ph),1); arm(-14*s,1);
+    return caps;
+  }
+  /* 只是一个“人”字：一竖下来，分成两条腿 */
+  var hipY=join?50:51.5;
+  head(G,[walk?52.5:51,9],join,col,caps);
+  stroke(G,[[[walk?52.3:51,join?13:20.5],[walk?53.4:51.4,26],[walk?50.8:49.6,38],[50,hipY]]],W*1.1,col,caps);
+  var hp=[50,hipY], L=25.5;
+  if(!walk){
+    limb(G,hp,-24,L,6,L,W,col,[-60,7],caps);      /* 撇：往左下，长一点 */
+    limb(G,hp,19,L,-4,L*.96,W,col,[66,7.5],caps); /* 捺：往右下，收笔向右 */
+    return caps;
+  }
+  var leg2=function(sw,k,op){var a=E('g',{opacity:op},G);limb(a,hp,sw,L,k,L,W,col,[80-k*.3,7.5],op===1?caps:null);};
+  leg2(-24*s,kn(ph+Math.PI),.8); leg2(24*s,kn(ph),1);
+  return caps;
+}};
+})();
+
+</script>
+<script>
 document.getElementById('nojs').style.display='none';
 /* 用鼠标或手指时不画焦点框，按 Tab 键时再画 */
 document.addEventListener('pointerdown',function(){document.documentElement.classList.add('pointer');},true);
@@ -908,15 +987,9 @@ function buildStatic(){
   var person=document.createElement('div'); person.className='person'; person.setAttribute('aria-hidden','true');
   person.innerHTML='<svg class="pm" viewBox="26 2 48 96" aria-hidden="true"><mask id="pmask" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="14" y="-4" width="72" height="108"><rect x="14" y="-4" width="72" height="108" fill="#fff"/>'
    +RINGS.map(function(R){return '<path class="pmc" fill="#000" d=""/>';}).join('')+'</mask></svg>'
-   +'<svg class="stand" viewBox="26 2 48 96"><g mask="url(#pmask)"><g stroke="#FFFDF6" stroke-linecap="round" fill="none">'
-   +'<line x1="45" y1="30" x2="40.5" y2="52" stroke-width="6.6"/><line x1="55" y1="30" x2="59.5" y2="52" stroke-width="6.6"/>'
-   +'<line x1="46.5" y1="56" x2="45.5" y2="92" stroke-width="7.6"/><line x1="53.5" y1="56" x2="54.5" y2="92" stroke-width="7.6"/></g>'
-   +'<rect x="43" y="24.5" width="14" height="34" rx="7" fill="#FFFDF6"/><circle cx="50" cy="13.5" r="7.2" fill="#FFFDF6"/></g></svg>'
-   +'<svg class="walk" viewBox="26 2 48 96"><g mask="url(#pmask)"><g class="bob"><g class="arm b2"><line class="lm back" x1="50" y1="30" x2="50" y2="52" stroke-width="6.6"/></g>'
-   +'<g class="leg b2"><line class="lm back" x1="50" y1="56" x2="50" y2="74" stroke-width="7.6"/><g class="shin b2"><line class="lm back" x1="50" y1="74" x2="50" y2="92" stroke-width="7.6"/></g></g>'
-   +'<rect x="43.5" y="24.5" width="13" height="34" rx="6.5" fill="#FFFDF6"/><circle cx="50.5" cy="13.5" r="7" fill="#FFFDF6"/>'
-   +'<g class="leg"><line class="lm" x1="50" y1="56" x2="50" y2="74" stroke-width="7.6"/><g class="shin"><line class="lm" x1="50" y1="74" x2="50" y2="92" stroke-width="7.6"/></g></g>'
-   +'<g class="arm"><line class="lm" x1="50" y1="30" x2="50" y2="52" stroke-width="6.6"/></g></g></g></svg>';
+   +'<svg class="stand" viewBox="26 2 48 96"><g mask="url(#pmask)"><g class="fs" transform="translate(50 2) scale(.96) translate(-50 0)"></g></g></svg>'
+   +'<svg class="walk" viewBox="26 2 48 96"><g mask="url(#pmask)"><g class="fw" transform="translate(50 2) scale(.96) translate(-50 0)"></g></g></svg>';
+  NFIG.draw(person.querySelector('.fs'),{mode:'stand'},FIG_OPT); NFIG.draw(person.querySelector('.fw'),{mode:'walk',ph:0},FIG_OPT);
   labelsEl.appendChild(person); PMASK=[].slice.call(person.querySelectorAll('.pmc'));
 }
 /* 月相：一天一格，月亮做成浮在格子上的小球 */
@@ -1226,7 +1299,7 @@ function setMode(m){
   var now=performance.now()/1000, n=RINGS.length;
   RINGS.forEach(function(R,i){var g=G[R.k];
     if(m==='move'){g.at=now+i*STAGGER; g.phase='opening'; g.inc0=g.inc;}
-    else{g.at=now+(n-1-i)*STAGGER; g.phase='closing'; g.c=null;}
+    else{g.at=now+i*STAGGER; g.phase='closing'; g.c=null;}   /* 收起也从里到外：时辰先躺平，四季最后 */
   });
   if(m==='move'){orrery.classList.add('moving'); Qclose=null;}
   else{orrery.classList.remove('moving'); var aa=axisAngle(Q); Qclose={t0:now,dur:(n-1)*STAGGER+CLOSE_T,aa:aa};}
@@ -1308,6 +1381,7 @@ function tick(t){
   if(wantGL!==GL.active){GL.active=wantGL; orrery.classList.toggle('gl',wantGL);}
   Object.keys(MARKERS).forEach(function(k){var L=MARKERS[k],d=L.target-L.ang;if(Math.abs(d)>.05){L.ang+=d*(1-Math.exp(-dt*3.2));active=true;}else L.ang=L.target;L.x=L.r*sind(L.ang);L.y=-L.r*cosd(L.ang);});
   placeLabels();
+  if(orrery.classList.contains('moving')){var fw=orrery.querySelector('.person .fw'); if(fw){fw.innerHTML=''; NFIG.draw(fw,{mode:'walk',ph:now*Math.PI*2*FIG_WALK},FIG_OPT);}}
   if(GL.active)glFrame();
   if(active)requestAnimationFrame(tick); else rafOn=false;
 }
@@ -1330,8 +1404,11 @@ function personMask(){
   });
 }
 /* 小人的身体（人像坐标）：头是圆，身体、手臂、腿是胶囊形 */
-var BODY_STAND=[{a:[50,13.5],b:[50,13.5],r:7.2},{a:[50,31.5],b:[50,51.5],r:7},{a:[45,30],b:[40.5,52],r:3.3},{a:[55,30],b:[59.5,52],r:3.3},{a:[46.5,56],b:[45.5,92],r:3.8},{a:[53.5,56],b:[54.5,92],r:3.8}];
-var BODY_WALK=BODY_STAND.concat([{a:[50,30],b:[41.8,50.4],r:3.3},{a:[50,30],b:[58.2,50.4],r:3.3},{a:[50,56],b:[42.7,72.4],r:3.8},{a:[50,56],b:[57.3,72.4],r:3.8},{a:[42.7,72.4],b:[47,90],r:3.8},{a:[57.3,72.4],b:[61,90],r:3.8}]);
+var FIG_OPT={head:'join',arms:true};          /* 小人：头和身体连着、有手。换成 {head:'apart'} 头就分开；{arms:false} 就只是一个“人”字 */
+var FIG_WALK=.8;                                /* 迈步的快慢：每秒几步（一左一右算一步） */
+function figCaps(list){return list.map(function(c){return {a:[50+(c.a[0]-50)*.96,2+c.a[1]*.96],b:[50+(c.b[0]-50)*.96,2+c.b[1]*.96],r:c.r*.96};});}
+var BODY_STAND=figCaps(NFIG.draw(document.createElementNS('http://www.w3.org/2000/svg','g'),{mode:'stand'},FIG_OPT));
+var BODY_WALK=BODY_STAND.concat(figCaps([0,Math.PI/2,Math.PI,1.5*Math.PI].reduce(function(acc,ph){return acc.concat(NFIG.draw(document.createElementNS('http://www.w3.org/2000/svg','g'),{mode:'walk',ph:ph},FIG_OPT));},[])));
 function segNear(p,c){var ax=c.a[0],ay=c.a[1],bx=c.b[0]-ax,by=c.b[1]-ay,L=bx*bx+by*by,t=L?Math.max(0,Math.min(1,((p.x-ax)*bx+(p.y-ay)*by)/L)):0;return {x:ax+bx*t,y:ay+by*t};}
 function bodyDist(p,B){var m=1e9;for(var i=0;i<B.length;i++){var q=segNear(p,B[i]);m=Math.min(m,Math.hypot(p.x-q.x,p.y-q.y)-B[i].r);}return m;}
 /* 金线的落点：先试胸口；从外面连到胸口的直线要是会穿过头、手或别处，就改连离它最近的身体边缘 */
