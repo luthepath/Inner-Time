@@ -33,7 +33,7 @@
   /* 卡片圆角：养生卡片、日历格子、干支月框线 */
   --r-card:8px;
   /* 圆环“动/静”切换时，平面和立体效果交叉淡入淡出的时长 */
-  --gl-fade:1.2s;
+  --gl-fade:.8s;
   /* 圆环转动的速度倍数在脚本里：搜 SPIN_SPEED */
   /* 日历里干支月的框线和名字 */
   --gzm-label-size:12.5px; /* “戊戌月”的字号 */
@@ -159,6 +159,8 @@ html.pointer :focus-visible{outline:none}
 .orrery.gl .layer:not(.L-base){opacity:0; visibility:hidden; transition:opacity 0s linear var(--gl-fade), visibility 0s linear var(--gl-fade)}
 /* 立体时字和小太阳由 WebGL 画（会被前面的环真的挡住），这里的 HTML 只留着给读屏和点按 */
 .orrery .labels .lab,.orrery .links{transition:opacity .25s, filter .35s ease, visibility 0s}
+/* 回到平面的那一下：平面的字马上出现（立体那层的字同时去掉），不再两层字叠着 */
+.orrery.unGL .labels .lab,.orrery.unGL .links{transition:none}
 .orrery.gl .labels .lab,.orrery.gl .links{filter:opacity(0); visibility:hidden; transition:opacity .25s, filter var(--gl-fade) ease, visibility 0s linear var(--gl-fade)}
 .seg{pointer-events:visibleStroke; cursor:pointer; transition:opacity .25s}
 .orrery.moving .seg{cursor:grab}
@@ -1074,7 +1076,7 @@ var SEASON_GLSL=[
 '  float gw=.75*uGap; if(arc<gw)col=uPaper;',
 '  return col;}',''].join('\n');
 /* 关闭时，圆环都躺平以后：UNBLEND_T 秒里四季颜色从交融收拢成分界，再用 GAP_T 秒出现白色分割线 */
-var UNBLEND_T=1.6, GAP_T=.6;
+var UNBLEND_T=1, GAP_T=.4;
 var LIFT=4;                     /* 字和小太阳浮在环面上方多高（朝着看的人） */
 function glInit(){
   var T=window.THREE, cv=document.createElement('canvas'); cv.className='gl'; cv.setAttribute('aria-hidden','true');
@@ -1153,7 +1155,23 @@ function glTexture(){
 /* 圈上的字、小太阳、月亮小球：在立体时画成正对着人的小牌子，放进三维里，前面的环会真的把它挡住 */
 function mixHex(a,b,t){function p(h){h=h.replace('#','');if(h.length===3)h=h.replace(/./g,'$&$&');return [0,2,4].map(function(i){return parseInt(h.substr(i,2),16);});}
   if(a.charAt(0)!=='#'||b.charAt(0)!=='#')return a; var x=p(a),y=p(b);return 'rgb('+x.map(function(v,i){return Math.round(v+(y[i]-v)*t);}).join(',')+')';}
-function glRatio(){return Math.min(4,(window.devicePixelRatio||1)*1.35);}
+/* 立体时字的清晰度：字的贴图比屏幕像素多几倍。和画布本身的像素比挂钩，
+   手机（像素比 3）以前贴图是画布的 2 倍，转动时字会一闪一闪，现在和电脑一样 */
+var GL_TEXT_SHARP=1.35;
+function glRatio(){return Math.min(2,window.devicePixelRatio||1)*GL_TEXT_SHARP;}
+/* 量出网页里这个字的基线离框顶多远（不受旋转、缩放影响），立体的字照这个位置画 */
+var BL_CACHE={};
+function domBaseline(el,cs){
+  var key=[el.className.replace(/\bon\b/,''),cs.font,cs.lineHeight,cs.paddingTop].join('|');
+  if(key in BL_CACHE)return BL_CACHE[key];
+  var cl=el.cloneNode(true), mk=document.createElement('span');
+  cl.removeAttribute('style'); cl.style.transform='none'; cl.style.visibility='hidden'; cl.style.left='0'; cl.style.top='0';
+  mk.style.cssText='display:inline-block;width:0;height:0;vertical-align:baseline';
+  cl.appendChild(mk); el.parentNode.appendChild(cl);
+  var r=cl.getBoundingClientRect(), m=mk.getBoundingClientRect(), v=(r.height>0)?m.top-r.top:null;
+  cl.parentNode.removeChild(cl);
+  if(v!=null&&(!document.fonts||document.fonts.status==='loaded'))BL_CACHE[key]=v; return v;
+}
 function glRaster(L){
   var el=L.el, cs=getComputedStyle(el), sv=el.querySelector('svg'), ratio=glRatio(), T=GL.T, w, h, pad, key;
   if(sv){var ss=getComputedStyle(sv); w=parseFloat(ss.width)||el.offsetWidth; h=parseFloat(ss.height)||el.offsetHeight;}
@@ -1179,7 +1197,10 @@ function glRaster(L){
   if(el.classList.contains('badge')){c.fillStyle=cs.backgroundColor||'#EEEDE9'; c.beginPath(); c.arc(pad+w/2,pad+h/2,w/2,0,Math.PI*2); c.fill();}
   c.font=cs.fontStyle+' '+cs.fontWeight+' '+cs.fontSize+' '+cs.fontFamily; c.fillStyle=cs.color; c.textAlign='center'; c.textBaseline='middle';
   if('letterSpacing' in c&&cs.letterSpacing!=='normal')c.letterSpacing=cs.letterSpacing;
-  c.fillText(el.textContent,pad+w/2,pad+h/2+parseFloat(cs.fontSize)*.04);
+  /* 按网页排字的方法放基线（行高居中），立体的字和平面的字就在同一个高度 */
+  var bl=domBaseline(el,cs);
+  if(bl!=null){c.textBaseline='alphabetic'; c.fillText(el.textContent,pad+w/2,pad+bl);}
+  else c.fillText(el.textContent,pad+w/2,pad+h/2+parseFloat(cs.fontSize)*.04);
   done();
 }
 function glSyncLabels(){
@@ -1190,7 +1211,7 @@ function glSyncLabels(){
   GL.spr.forEach(function(sp){if(!sp.userData.live){if(sp.parent)sp.parent.remove(sp); if(sp.material.map)sp.material.map.dispose(); sp.material.dispose();}});
   GL.spr=LABELS.map(function(L){L.sp.userData.live=false; return L.sp;});
 }
-function glFrame(){
+function glFrame(noText){
   RINGS.forEach(function(Rg){var M=G[Rg.k].M, m=GL.meshes[Rg.k];
     m.matrix.set(M[0],M[1],M[2],0, -M[3],-M[4],-M[5],0, M[6],M[7],M[8],0, 0,0,0,1); m.matrixWorldNeedsUpdate=true;
     var fm=GL.fringe&&GL.fringe[Rg.k]; if(fm){fm.matrix.copy(m.matrix); fm.matrixWorldNeedsUpdate=true;}});
@@ -1214,6 +1235,7 @@ function glFrame(){
   var R=GL.R, mats=[]; RINGS.forEach(function(Rg){var m=GL.meshes[Rg.k].material; if(mats.indexOf(m)<0)mats.push(m);});
   function setFr(v){if(GL.fringe)for(var q in GL.fringe)GL.fringe[q].visible=v;}
   R.clear(); R.render(GL.scene,GL.cam);
+  if(noText)return;   /* 回到平面的最后一帧：只留环，不画字，免得和平面的字叠在一起 */
   RINGS.forEach(function(Rg){var k=Rg.k;
     R.clearDepth(); mats.forEach(function(m){m.colorWrite=false;}); GL.meshes[k].visible=false; setFr(false);
     R.render(GL.scene,GL.cam);
@@ -1241,7 +1263,7 @@ function ringHit3D(e){
 
 /* ======================= 动静：开合、自转、拨动 ======================= */
 var mode='still', drag=null, rafOn=false, lastT=0, Q=I3.slice(), Qw=[0,0,0], Qclose=null;
-var G={}; var STAGGER=0.22, OPEN_T=2.3, CLOSE_T=1.4;   /* OPEN_T：每一圈立起来用几秒；CLOSE_T：躺平用几秒 */
+var G={}; var STAGGER=0.22, OPEN_T=1, CLOSE_T=1;   /* OPEN_T：每一圈立起来用几秒；CLOSE_T：躺平用几秒 */
 RINGS.forEach(function(R,idx){G[R.k]={idx:idx,R:R,inc:0,spin:0,sv:0,w:0,E:I3.slice(),S:{w:[0,0,0],sp:0,dir:null,wp:0},at:0,phase:'flat',c:null,M:I3.slice()};});
 var QS={w:[0,0,0],sp:0,dir:null,wp:0};
 /* 拨动后的一次连续运动：速度从松手那一刻起一路减下来，从不再加速；
@@ -1378,7 +1400,10 @@ function tick(t){
     GL.sU.uBeta.value=GL.bNow||0; GL.sU.uGap.value=GL.gap==null?1:GL.gap;
   }
   var wantGL=GL.ready&&GL.texReady&&(!allFlat||ubOn);
-  if(wantGL!==GL.active){GL.active=wantGL; orrery.classList.toggle('gl',wantGL);}
+  if(wantGL!==GL.active){GL.active=wantGL;
+    if(!wantGL){glFrame(true); orrery.classList.add('unGL');}
+    orrery.classList.toggle('gl',wantGL);
+    if(!wantGL){void orrery.offsetWidth; setTimeout(function(){orrery.classList.remove('unGL');},50);}}
   Object.keys(MARKERS).forEach(function(k){var L=MARKERS[k],d=L.target-L.ang;if(Math.abs(d)>.05){L.ang+=d*(1-Math.exp(-dt*3.2));active=true;}else L.ang=L.target;L.x=L.r*sind(L.ang);L.y=-L.r*cosd(L.ang);});
   placeLabels();
   if(orrery.classList.contains('moving')){var fw=orrery.querySelector('.person .fw'); if(fw){fw.innerHTML=''; NFIG.draw(fw,{mode:'walk',ph:now*Math.PI*2*FIG_WALK},FIG_OPT);}}
