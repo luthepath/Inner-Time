@@ -587,43 +587,71 @@ function bez(s,t){var u=1-t;return [u*u*u*s[0][0]+3*u*u*t*s[1][0]+3*u*t*t*s[2][0
 function pt(o,a,l){var r=a*Math.PI/180;return [o[0]+Math.sin(r)*l,o[1]+Math.cos(r)*l];}       /* a 从正下方量，向右为正 */
 /* 记号笔一样的笔画：粗细基本一致，起笔略圆，收笔稍收 */
 function prof(t){return t<.06?.82+3*t:(t>.8?1-.3*(t-.8)/.2:1);}
-function stroke(g,segs,w,col,caps){
+function stroke(g,segs,w,col,caps,flat){
+  var P=typeof flat==='function'?flat:(flat?function(){return 1;}:prof);
   var C=[],n=16;
   segs.forEach(function(s,si){for(var i=(si?1:0);i<=n;i++)C.push(bez(s,i/n));});
   var L=[],R=[],N=C.length;
-  for(var i=0;i<N;i++){var a=C[Math.max(0,i-1)],b=C[Math.min(N-1,i+1)],dx=b[0]-a[0],dy=b[1]-a[1],l=Math.hypot(dx,dy)||1,ww=w*prof(i/(N-1))/2;
+  for(var i=0;i<N;i++){var a=C[Math.max(0,i-1)],b=C[Math.min(N-1,i+1)],dx=b[0]-a[0],dy=b[1]-a[1],l=Math.hypot(dx,dy)||1,ww=w*P(i/(N-1))/2;
     L.push([C[i][0]-dy/l*ww,C[i][1]+dx/l*ww]);R.push([C[i][0]+dy/l*ww,C[i][1]-dx/l*ww]);}
   var f=function(p){return p[0].toFixed(2)+' '+p[1].toFixed(2);};
   E('path',{d:'M'+L.map(f).join('L')+'L'+R.reverse().map(f).join('L')+'Z',fill:col},g);
-  E('circle',{cx:C[0][0],cy:C[0][1],r:w*prof(0)/2,fill:col},g);
-  E('circle',{cx:C[N-1][0],cy:C[N-1][1],r:w*prof(1)/2,fill:col},g);
+  E('circle',{cx:C[0][0],cy:C[0][1],r:w*P(0)/2,fill:col},g);
+  E('circle',{cx:C[N-1][0],cy:C[N-1][1],r:w*P(1)/2,fill:col},g);
   if(caps)for(var j=0;j+3<N;j+=3)caps.push({a:C[j],b:C[Math.min(N-1,j+3)],r:w/2});
 }
 /* 两节的肢体，过关节弯一下；tip：末端的小钩（角度, 长度） */
-function limb(g,o,a1,l1,a2,l2,w,col,tip,caps){
+function limb(g,o,a1,l1,a2,l2,w,col,tip,caps,flat){
   var j=pt(o,a1,l1), e=pt(j,a1+a2,l2);
   var segs=[[o,[o[0]+(j[0]-o[0])*.75,o[1]+(j[1]-o[1])*.75],[j[0]+(e[0]-j[0])*.25,j[1]+(e[1]-j[1])*.25],e]];
   if(tip){var q=pt(e,a1+a2+tip[0],tip[1]);segs.push([e,pt(e,a1+a2+tip[0]*.5,tip[1]*.4),q,q]);}
-  stroke(g,segs,w,col,caps);
+  stroke(g,segs,w,col,caps,flat);
 }
 function head(g,c,join,col,caps){
   if(join)E('ellipse',{cx:c[0],cy:c[1],rx:6.4,ry:7.6,fill:col},g); else E('circle',{cx:c[0],cy:c[1],r:7.2,fill:col},g);
   if(caps)caps.push({a:c,b:c,r:7.4});
 }
+/* 让笔画边缘连成一整条顺滑的线：先轻轻模糊，再把边缘收紧。
+   凹进去的地方（脖子、腋下、胯下）会自然长出圆弧，凸出来的手脚也变圆 */
+function smoothF(g,sm){
+  var sv=g.ownerSVGElement; if(!sv||!(sm>0))return null;
+  var id='nfsm'+String(sm).replace('.','_');
+  if(!document.getElementById(id)){
+    var d=sv.querySelector('defs')||E('defs',{},sv), f=E('filter',{id:id,x:'-25%',y:'-15%',width:'150%',height:'130%','color-interpolation-filters':'sRGB'},d);
+    E('feGaussianBlur',{'in':'SourceGraphic',stdDeviation:sm},f);
+    E('feColorMatrix',{type:'matrix',values:'1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -8.5'},f);
+  }
+  return 'url(#'+id+')';
+}
+function smoothG(par,sm){var f=smoothF(par,sm), a={}; if(f)a.filter=f; return E('g',a,par);}
 window.NFIG={draw:function(g,pose,opt){
   opt=opt||{}; var col=opt.color||'#FFFDF6', W=opt.w||8, join=opt.head!=='apart', arms=opt.arms!==false, caps=[];
   var walk=pose.mode==='walk', ph=pose.ph||0, s=Math.sin(ph);
-  var G=E('g',{transform:'translate(0 '+(walk?-1.2*Math.abs(Math.cos(ph)):0)+')'},g);
+  var SM=opt.smooth==null?1.6:opt.smooth, SJ=opt.smoothJ==null?1.2:opt.smoothJ, SW=W*(opt.limb||1);
+  var G0=E('g',{transform:'translate(0 '+(walk?-1.2*Math.abs(Math.cos(ph)):0)+')'},g), G;
+  if(arms&&walk){var BA=E('g',{},G0), BL=E('g',{},G0);}   /* 后面的手脚单独平滑，保留半透明 */
+  /* 头和身体放一层（脖子用 SM 的圆弧）；身体和手脚放另一层（腋下、胯下用 SJ 的圆弧） */
+  var GN=smoothG(G0,SM), GJ=smoothG(G0,SJ); G=GJ;
+  var body=function(segs){stroke(GN,segs,SW,col,null,true); stroke(GJ,segs,SW,col,caps,true);};
   var kn=function(p){return -Math.max(0,24*Math.sin(p+Math.PI/2+.3));};
   if(arms&&!walk){
     /* 正面站立，有手 */
+    if(join){
+      /* 照用户画的正面：身体比手脚粗一点（TW），脖子还是原来的粗细；手原来的粗细；腿直、分叉在 y≈68 */
+      var AL=opt.arm||19.5, TW=opt.torso||10, AW=W*(opt.armW||.88), HX=opt.hipW==null?2.2:opt.hipW, LA=opt.legA||8, SX=opt.shoulder==null?.8:opt.shoulder, HF=50, LW=SW;
+      head(GN,[50,9],join,col,caps);
+      var nk=SW/TW, bp=function(t){return t<.22?nk+(1-nk)*(.5-.5*Math.cos(Math.PI*t/.22)):1;};   /* 脖子细，往下慢慢变成身体的粗细 */
+      var bs=[[[50,13],[50.3,28],[49.8,40],[50,HF+2]]];
+      stroke(GN,bs,TW,col,null,bp); stroke(GJ,bs,TW,col,caps,bp);
+      limb(GJ,[47.6-SX,24],-42,14,34,AL,AW,col,[-14,3.5],caps,true); limb(GJ,[52.4+SX,24],42,14,-34,AL,AW,col,[14,3.5],caps,true);
+      var l1=(98.6-HF)/2/Math.cos(LA*Math.PI/180);
+      limb(GJ,[50-HX,HF],-LA,l1,0,l1,LW,col,[-72,7],caps,true);   limb(GJ,[50+HX,HF],LA,l1,0,l1,LW,col,[72,7],caps,true);
+      return caps;
+    }
     head(G,[50,9],join,col,caps);
     var t0=join?13:20.5;
     stroke(G,[[[50,t0],[50.8,28],[49.4,40],[50,join?54:51]]],W*1.08,col,caps);
-    if(join){
-      limb(G,[47.6,24],-42,14,32,16,W*.88,col,[-14,4],caps); limb(G,[52.4,24],42,14,-32,16,W*.88,col,[14,4],caps);
-      limb(G,[49.4,53],-13,23,6,24,W,col,[-72,7],caps);      limb(G,[50.6,53],13,23,-6,24,W,col,[72,7],caps);
-    }else{
+    {
       limb(G,[41,27],-22,14,18,16,W*.86,col,[-16,4.5],caps); limb(G,[59,27],22,14,-18,16,W*.86,col,[16,4.5],caps);
       limb(G,[46,56],-11,22,6,23,W*.96,col,[-74,7.5],caps);  limb(G,[54,56],11,22,-6,23,W*.96,col,[74,7.5],caps);
     }
@@ -631,11 +659,11 @@ window.NFIG={draw:function(g,pose,opt){
   }
   if(arms){
     /* 侧面迈步，有手：背挺直，步子和节奏跟“人”字一样，手只轻轻前后摆 */
-    head(G,[51.6,9],join,col,caps);
-    stroke(G,[[[51.3,join?13:20.5],[51.7,27],[50.7,40],[50,52]]],W*1.08,col,caps);
+    head(GN,[51.6,9],join,col,caps);
+    body([[[51.3,join?13:20.5],[51.7,27],[50.7,40],[50,52]]]);
     var sh=join?[51.3,24.5]:[51.5,27.5], hip=[50,52], LL=24.5;
-    var arm=function(sw,op){var a=E('g',{opacity:op},G);limb(a,sh,sw,14,5+Math.max(0,sw)*.4,14.5,W*.84,col,[18,4.5],op===1?caps:null);};
-    var leg=function(sw,k,op){var a=E('g',{opacity:op},G);limb(a,hip,sw,LL,k,LL,W,col,[80-k*.3,7.5],op===1?caps:null);};
+    var arm=function(sw,op){var a=op===1?GJ:smoothG(E('g',{opacity:op},BA),SJ);limb(a,sh,sw,14,5+Math.max(0,sw)*.4,14.5,SW,col,[18,3.5],op===1?caps:null,true);};
+    var leg=function(sw,k,op){var a=op===1?GJ:smoothG(E('g',{opacity:op},BL),SJ);limb(a,hip,sw,LL,k,LL,SW,col,[80-k*.3,7.5],op===1?caps:null,true);};
     arm(14*s,.55); leg(-24*s,kn(ph+Math.PI),.75); leg(24*s,kn(ph),1); arm(-14*s,1);
     return caps;
   }
@@ -1263,7 +1291,7 @@ function ringHit3D(e){
 
 /* ======================= 动静：开合、自转、拨动 ======================= */
 var mode='still', drag=null, rafOn=false, lastT=0, Q=I3.slice(), Qw=[0,0,0], Qclose=null;
-var G={}; var STAGGER=0.22, OPEN_T=1, CLOSE_T=1;   /* OPEN_T：每一圈立起来用几秒；CLOSE_T：躺平用几秒 */
+var G={}; var STAGGER=0.22, OPEN_T=1.2, CLOSE_T=1.2;   /* OPEN_T：每一圈立起来用几秒；CLOSE_T：躺平用几秒 */
 RINGS.forEach(function(R,idx){G[R.k]={idx:idx,R:R,inc:0,spin:0,sv:0,w:0,E:I3.slice(),S:{w:[0,0,0],sp:0,dir:null,wp:0},at:0,phase:'flat',c:null,M:I3.slice()};});
 var QS={w:[0,0,0],sp:0,dir:null,wp:0};
 /* 拨动后的一次连续运动：速度从松手那一刻起一路减下来，从不再加速；
@@ -1429,7 +1457,10 @@ function personMask(){
   });
 }
 /* 小人的身体（人像坐标）：头是圆，身体、手臂、腿是胶囊形 */
-var FIG_OPT={head:'join',arms:true};          /* 小人：头和身体连着、有手。换成 {head:'apart'} 头就分开；{arms:false} 就只是一个“人”字 */
+var FIG_OPT={head:'join',arms:true,arm:19.5,torso:10,armW:.88,hipW:2.2,legA:8,shoulder:.8,smooth:1.6,smoothJ:1.2,limb:1};
+/* 小人（正面照用户画的样子）：arm 小臂长度；torso 身体粗细；armW 手的粗细（1 = 和腿一样）；
+   hipW 两条腿起点离中线多远（大一点分叉更高）；legA 腿张开的角度；shoulder 肩膀往外挪多少；
+   smooth 脖子的圆弧；smoothJ 腋下和胯下的圆弧；limb 腿的粗细（侧面走路的身体、手、腿也用它）。侧面走路只受 smooth、smoothJ、limb 影响 */
 var FIG_WALK=.8;                                /* 迈步的快慢：每秒几步（一左一右算一步） */
 function figCaps(list){return list.map(function(c){return {a:[50+(c.a[0]-50)*.96,2+c.a[1]*.96],b:[50+(c.b[0]-50)*.96,2+c.b[1]*.96],r:c.r*.96};});}
 var BODY_STAND=figCaps(NFIG.draw(document.createElementNS('http://www.w3.org/2000/svg','g'),{mode:'stand'},FIG_OPT));
