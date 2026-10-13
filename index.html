@@ -186,7 +186,7 @@ html.pointer :focus-visible{outline:none}
 .labels{position:absolute; inset:0; pointer-events:none; z-index:2}
 .labels.back{z-index:auto}
 /* 连接各圈黄点的金色光线 */
-.links{position:absolute; left:0; top:0; width:100%; height:100%; overflow:visible; pointer-events:none; z-index:2500; transition:opacity .25s}
+.links{position:absolute; left:0; top:0; width:100%; height:100%; overflow:visible; pointer-events:none; z-index:990;   /* 在小人后面：线都连到胸口，被身体挡住，不挡小人的白光 */ transition:opacity .25s}
 .links .lg{fill:none; stroke:#FFC61A; stroke-width:3.4; stroke-opacity:.55; stroke-linejoin:round; stroke-linecap:round}
 .links .lc{fill:none; stroke:#FFE27A; stroke-width:.9; stroke-linejoin:round; stroke-linecap:round}
 .lab{position:absolute; left:0; top:0; white-space:nowrap; color:var(--label); line-height:1; opacity:var(--d,1); transition:opacity .25s; font-size:calc(var(--u)*14px)}
@@ -1533,9 +1533,11 @@ var BODY_WALK=BODY_STAND.concat(figCaps([0,Math.PI/2,Math.PI,1.5*Math.PI].reduce
 function segNear(p,c){var ax=c.a[0],ay=c.a[1],bx=c.b[0]-ax,by=c.b[1]-ay,L=bx*bx+by*by,t=L?Math.max(0,Math.min(1,((p.x-ax)*bx+(p.y-ay)*by)/L)):0;return {x:ax+bx*t,y:ay+by*t};}
 function bodyDist(p,B){var m=1e9;for(var i=0;i<B.length;i++){var q=segNear(p,B[i]);m=Math.min(m,Math.hypot(p.x-q.x,p.y-q.y)-B[i].r);}return m;}
 /* 金线的落点：先试胸口；从外面连到胸口的直线要是会穿过头、手或别处，就改连离它最近的身体边缘 */
+var LINK_TO={x:50,y:36};                         /* 金线都连到这里（胸口，人像坐标）；线在小人后面，穿过身体的部分被身体挡住 */
 function bodyAnchor(P){
-  var B=orrery.classList.contains('moving')?BODY_WALK:BODY_STAND, C={x:50,y:36}, PAD=1.2;
+  var B=orrery.classList.contains('moving')?BODY_WALK:BODY_STAND, C=LINK_TO, PAD=1.2;
   if(bodyDist(P,B)<=PAD)return null;
+  return C;
   var dx=P.x-C.x, dy=P.y-C.y, L=Math.hypot(dx,dy)||1, t=0, E;
   while(t<L&&bodyDist({x:C.x+dx/L*t,y:C.y+dy/L*t},B)<PAD)t+=.25;
   E={x:C.x+dx/L*t,y:C.y+dy/L*t};
